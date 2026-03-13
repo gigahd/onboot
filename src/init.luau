@@ -5,9 +5,6 @@
 
 local verbose = false
 
-type PredicateFn = (module: ModuleScript) -> boolean
-type LoadedModules = { [string]: any }
-
 local function mergeInto<T, V>(target: { [T]: V }, source: { [T]: V }): { [T]: V }
     for k, v in source do
         if target[k] ~= nil then
@@ -17,6 +14,14 @@ local function mergeInto<T, V>(target: { [T]: V }, source: { [T]: V }): { [T]: V
     end
     return target
 end
+
+type PredicateFn = (module: ModuleScript) -> boolean
+type LoadedModulesState = { [string]: any }
+type LoadedModules = typeof(setmetatable({} :: LoadedModulesState, {} :: {__add: (self: LoadedModulesState, other: LoadedModulesState) -> LoadedModulesState}))
+
+local LoadedModules = {
+    __add = mergeInto,
+}
 
 local function getModuleChildren(parent: Instance): { ModuleScript }
     local children = parent:GetChildren()
@@ -42,7 +47,7 @@ local function resolveSingleRootStartup(
     local modules: { ModuleScript } = if queryDescendants
         then root:QueryDescendants("ModuleScript")
         else getModuleChildren(root)
-    local out: LoadedModules = {}
+    local out: LoadedModules = setmetatable({}, LoadedModules)
     for _, module in modules do
         if predicate and not predicate(module) then
             continue
@@ -65,7 +70,7 @@ local function resolveMultiRootStartup(
     for _, root in roots do
         assert(rootIsInstance(root), `Roots includes type other than Instance ({typeof(root)})`)
     end
-    local out: LoadedModules = {}
+    local out: LoadedModules = setmetatable({}, LoadedModules)
     for _, root in roots do
         local single = resolveSingleRootStartup(root, predicate, queryDescendants)
         mergeInto(out, single)
@@ -106,8 +111,8 @@ local function loadSingleModule(module: Instance)
 end
 
 local function loadModule(module: Instance | {Instance}): LoadedModules
-    debug.profilebegin("Load Root")
-    local out = {}
+    debug.profilebegin("Load Module")
+    local out = setmetatable({}, LoadedModules)
     if typeof(module) == "table" then
         for _, m in module do
             out[m.Name] = loadSingleModule(m)
@@ -122,7 +127,7 @@ end
 
 local function spawnAllNoCallback(modules: LoadedModules, methodName: string)
     for name, mod in modules do
-        local method: any = mod[methodName]
+        local method: any = if methodName then mod[methodName] else mod
         if not (type(method) == "function") then
             continue
         end
@@ -132,15 +137,15 @@ local function spawnAllNoCallback(modules: LoadedModules, methodName: string)
                 return debug.traceback(tostring(e))
             end, mod)
             if not success then
-                warn(`[OnBoot] {name}:{methodName} failed:\n{err}`)
+                warn(`[OnBoot] {name}:{if methodName then `:{methodName}` else ""} failed:\n{err}`)
             elseif verbose then
-                print(`[OnBoot] Called {name}:{methodName}`)
+                print(`[OnBoot] Called {name}:{if methodName then `:{methodName}` else ""}`)
             end
         end)
     end
 end
 
-local function spawnAllCallback(modules: LoadedModules, methodName: string, callback: () -> ())
+local function spawnAllCallback(modules: LoadedModules, methodName: string?, callback: () -> ())
     local remaining = 0
     for _, mod in modules do
         if type(mod[methodName]) == "function" then
@@ -152,7 +157,7 @@ local function spawnAllCallback(modules: LoadedModules, methodName: string, call
         return
     end
     for name, mod in modules do
-        local method: any = mod[methodName]
+        local method: any = if methodName then mod[methodName] else mod
         if type(method) ~= "function" then continue end
         task.spawn(function()
             debug.setmemorycategory(name)
@@ -160,9 +165,9 @@ local function spawnAllCallback(modules: LoadedModules, methodName: string, call
                 return debug.traceback(tostring(e))
             end, mod)
             if not success then
-                warn(`[OnBoot] {name}:{methodName} failed:\n{err}`)
+                warn(`[OnBoot] {name}{if methodName then `:{methodName}` else ""} failed:\n{err}`)
             elseif verbose then
-                print(`[OnBoot] Called {name}:{methodName}`)
+                print(`[OnBoot] Called {name}:{if methodName then `:{methodName}` else ""}`)
             end
             remaining -= 1
             if remaining == 0 then
@@ -196,7 +201,7 @@ local function matchParentName(parentName: string): PredicateFn
     end
 end
 
-local function spawnAll(modules: LoadedModules, methodName: string, callback: (() -> ())?)
+local function spawnAll(modules: LoadedModules, methodName: string?, callback: (() -> ())?)
     if callback then
         return spawnAllCallback(modules, methodName, callback)
     end
@@ -215,6 +220,6 @@ return table.freeze({
     MatchName = matchName,
     LoadDescendants = loadDescendants,
     LoadChildren = loadChildren,
-    LoadRoot = loadModule,
+    LoadModule = loadModule,
     SpawnAll = spawnAll,
 })
