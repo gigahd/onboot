@@ -93,6 +93,32 @@ local function loadChildren(parent: Instance | { Instance }, predicate: Predicat
     return result
 end
 
+local function loadSingleModule(module: Instance)
+    assert(rootIsInstance(module), `Module is not an Instance got type {typeof(module)}`)
+    assert(module.ClassName == "ModuleScript", `Module is not a Module script, got {module.ClassName}`)
+    local success, loadedModule = pcall(require, module)
+    if success then
+        return loadedModule
+    else
+        warn(`Failed to load {module:GetFullName()} \nerror:{loadedModule}`)
+    end
+    return nil
+end
+
+local function loadModule(module: Instance | {Instance}): LoadedModules
+    debug.profilebegin("Load Root")
+    local out = {}
+    if typeof(module) == "table" then
+        for _, m in module do
+            out[m.Name] = loadSingleModule(m)
+        end
+    else
+        out[module.Name] = loadSingleModule(module)
+    end
+    debug.profileend()
+    return out
+end
+
 
 local function spawnAllNoCallback(modules: LoadedModules, methodName: string)
     for name, mod in modules do
@@ -189,5 +215,6 @@ return table.freeze({
     MatchName = matchName,
     LoadDescendants = loadDescendants,
     LoadChildren = loadChildren,
+    LoadRoot = loadModule,
     SpawnAll = spawnAll,
 })
