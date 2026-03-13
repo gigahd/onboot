@@ -3,7 +3,7 @@
     A simple module to load any Module or Service you might need.
 ]]
 
-local VERBOSE = true
+local verbose = false
 
 type PredicateFn = (module: ModuleScript) -> boolean
 type LoadedModules = { [string]: any }
@@ -107,7 +107,7 @@ local function spawnAllNoCallback(modules: LoadedModules, methodName: string)
             end, mod)
             if not success then
                 warn(`[OnBoot] {name}:{methodName} failed:\n{err}`)
-            elseif VERBOSE then
+            elseif verbose then
                 print(`[OnBoot] Called {name}:{methodName}`)
             end
         end)
@@ -135,7 +135,7 @@ local function spawnAllCallback(modules: LoadedModules, methodName: string, call
             end, mod)
             if not success then
                 warn(`[OnBoot] {name}:{methodName} failed:\n{err}`)
-            elseif VERBOSE then
+            elseif verbose then
                 print(`[OnBoot] Called {name}:{methodName}`)
             end
             remaining -= 1
@@ -177,7 +177,12 @@ local function spawnAll(modules: LoadedModules, methodName: string, callback: ((
     spawnAllNoCallback(modules, methodName)
 end
 
+local function setDebugInfo(state: boolean)
+    verbose = state
+end
+
 return table.freeze({
+    SetDebugInfo = setDebugInfo,
     FindName = findName,
     FindParentName = findParentName,
     MatchParentName = matchParentName,
