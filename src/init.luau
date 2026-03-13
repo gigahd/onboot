@@ -35,7 +35,7 @@ local function getModuleChildren(parent: Instance): { ModuleScript }
 end
 
 local function rootIsInstance(root: Instance): boolean
-    return typeof(root) == "Instance"    
+    return typeof(root) == "Instance"
 end
 
 local function resolveSingleRootStartup(
@@ -125,7 +125,7 @@ local function loadModule(module: Instance | {Instance}): LoadedModules
 end
 
 
-local function spawnAllNoCallback(modules: LoadedModules, methodName: string)
+local function spawnAllNoCallback(modules: LoadedModules, methodName: string?)
     for name, mod in modules do
         local method: any = if methodName then mod[methodName] else mod
         if not (type(method) == "function") then
