@@ -148,7 +148,7 @@ end
 local function spawnAllCallback(modules: LoadedModules, methodName: string?, callback: () -> ())
     local remaining = 0
     for _, mod in modules do
-        if type(mod[methodName]) == "function" then
+        if methodName and type(mod[methodName]) == "function" or typeof(mod) == "function" then
             remaining += 1
         end
     end
