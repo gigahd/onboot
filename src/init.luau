@@ -257,10 +257,10 @@ local function phasesRunner(loader: Spawn, modules: LoadedModules, phases: { str
             return
         end
         runAllCallback(loader, modules, phases[i], function()
-            runPhase(i + 1)
             if verbose then
                 print(`Phase {phases[i]} Completed`)
             end
+            runPhase(i + 1)
         end)
     end
     runPhase(1)
