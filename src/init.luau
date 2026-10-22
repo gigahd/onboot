@@ -129,9 +129,9 @@ local function loadModule(module: Instance | { Instance }): LoadedModules
     return out
 end
 
-const function spawn(name: string, method: ModuleFunction, methodName: string?)
+const function spawn(name: string, method: ModuleFunction, methodName: string?, module: any)
     debug.setmemorycategory(name)
-    const success, err: any = pcall(method)
+    const success, err: any = pcall(method, module)
     if not success then
         warn(`[OnBoot] {name}:{if methodName then `:{methodName}` else ""} failed:\n{err}`)
     elseif verbose then
@@ -157,7 +157,7 @@ local function runAllNoCallback(loader: Spawn, modules: LoadedModules, methodNam
         else
             continue
         end
-        loader(spawn, name, method :: ModuleFunction, methodName)
+        loader(spawn, name, method :: ModuleFunction, methodName, mod)
     end
 end
 
@@ -179,7 +179,7 @@ local function runAllCallback(loader: Spawn, modules: LoadedModules, methodName:
         end
         remaining += 1
         loader(function()
-            spawn(name, method :: ModuleFunction, methodName)
+            spawn(name, method :: ModuleFunction, methodName, mod)
             remaining -= 1
             if remaining == 0 and not callbackRan then
                 callbackRan = true
