@@ -8,7 +8,7 @@ local verbose = false
 local function mergeInto<T, V>(target: { [T]: V }, source: { [T]: V }): { [T]: V }
     for k, v in source do
         if target[k] ~= nil then
-            warn(`[OnBoot] Duplicate module name "{k}" — overwriting`)
+            warn(`[OnBoot] Duplicate module name "{k}" overwriting`)
         end
         target[k] = v
     end
@@ -16,12 +16,17 @@ local function mergeInto<T, V>(target: { [T]: V }, source: { [T]: V }): { [T]: V
 end
 
 type PredicateFn = (module: ModuleScript) -> boolean
-type LoadedModulesState = { [string]: any }
-type LoadedModules = typeof(setmetatable({} :: LoadedModulesState, {} :: {__add: (self: LoadedModulesState, other: LoadedModulesState) -> LoadedModulesState}))
+type ModuleFunction = (...any) -> ()
+type ModuleDict = { [string]: ModuleFunction }
+type ModuleDef = ModuleFunction | ModuleDict
+type LoadedModulesState = { [string]: ModuleDef }
+type Spawn = typeof(task.spawn)
 
 local LoadedModules = {
     __add = mergeInto,
 }
+
+export type LoadedModules = setmetatable<LoadedModulesState, typeof(LoadedModules)>
 
 local function getModuleChildren(parent: Instance): { ModuleScript }
     local children = parent:GetChildren()
@@ -54,7 +59,7 @@ local function resolveSingleRootStartup(
         end
         local success, loadedModule = pcall(require, module)
         if success then
-            out[module.Name] = loadedModule
+            out[module:GetFullName()] = loadedModule
         else
             warn(`Failed to load {module:GetFullName()} \nerror:{loadedModule}`)
         end
@@ -110,71 +115,99 @@ local function loadSingleModule(module: Instance)
     return nil
 end
 
-local function loadModule(module: Instance | {Instance}): LoadedModules
+local function loadModule(module: Instance | { Instance }): LoadedModules
     debug.profilebegin("Load Module")
     local out = setmetatable({}, LoadedModules)
     if typeof(module) == "table" then
         for _, m in module do
-            out[m.Name] = loadSingleModule(m)
+            out[m:GetFullName()] = loadSingleModule(m)
         end
     else
-        out[module.Name] = loadSingleModule(module)
+        out[module:GetFullName()] = loadSingleModule(module)
     end
     debug.profileend()
     return out
 end
 
-
-local function spawnAllNoCallback(modules: LoadedModules, methodName: string?)
-    for name, mod in modules do
-        local method: any = if methodName then mod[methodName] else mod
-        if not (type(method) == "function") then
-            continue
-        end
-        task.spawn(function()
-            debug.setmemorycategory(name)
-            local success, err = xpcall(method, function(e)
-                return debug.traceback(tostring(e))
-            end, mod)
-            if not success then
-                warn(`[OnBoot] {name}:{if methodName then `:{methodName}` else ""} failed:\n{err}`)
-            elseif verbose then
-                print(`[OnBoot] Called {name}:{if methodName then `:{methodName}` else ""}`)
-            end
-        end)
+const function spawn(name: string, method: ModuleFunction, methodName: string?)
+    debug.setmemorycategory(name)
+    const success, err: any = pcall(method)
+    if not success then
+        warn(`[OnBoot] {name}:{if methodName then `:{methodName}` else ""} failed:\n{err}`)
+    elseif verbose then
+        print(`[OnBoot] Called {name}:{if methodName then `:{methodName}` else ""}`)
     end
 end
 
-local function spawnAllCallback(modules: LoadedModules, methodName: string?, callback: () -> ())
-    local remaining = 0
-    for _, mod in modules do
-        if methodName and type(mod[methodName]) == "function" or typeof(mod) == "function" then
-            remaining += 1
-        end
-    end
-    if remaining == 0 then
-        callback()
-        return
-    end
+const function getFunctionIfPossible(module: ModuleDict, methodName: string): ModuleFunction?
+    return module[methodName] :: any
+end
+
+local function runAllNoCallback(loader: Spawn, modules: LoadedModules, methodName: string?)
     for name, mod in modules do
-        local method: any = if methodName then mod[methodName] else mod
-        if type(method) ~= "function" then continue end
-        task.spawn(function()
-            debug.setmemorycategory(name)
-            local success, err = xpcall(method, function(e)
-                return debug.traceback(tostring(e))
-            end, mod)
-            if not success then
-                warn(`[OnBoot] {name}{if methodName then `:{methodName}` else ""} failed:\n{err}`)
-            elseif verbose then
-                print(`[OnBoot] Called {name}:{if methodName then `:{methodName}` else ""}`)
+        local method = nil
+        if type(mod) == "function" and not methodName then
+            method = mod
+        elseif type(mod) == "table" and methodName then
+            const func = getFunctionIfPossible(mod, methodName)
+            if not func then
+                continue
             end
+            method = func
+        else
+            continue
+        end
+        loader(spawn, name, method :: ModuleFunction, methodName)
+    end
+end
+
+local function runAllCallback(loader: Spawn, modules: LoadedModules, methodName: string?, callback: () -> ())
+    local remaining = 0
+    local callbackRan = false
+    for name, mod in modules do
+        local method = nil
+        if type(mod) == "function" and not methodName then
+            method = mod
+        elseif type(mod) == "table" and methodName then
+            const func = getFunctionIfPossible(mod, methodName)
+            if not func then
+                continue
+            end
+            method = func
+        else
+            continue
+        end
+        remaining += 1
+        loader(function()
+            spawn(name, method :: ModuleFunction, methodName)
             remaining -= 1
-            if remaining == 0 then
+            if remaining == 0 and not callbackRan then
+                callbackRan = true
                 callback()
             end
         end)
     end
+    if remaining == 0 and not callbackRan then
+        callbackRan = true
+        callback()
+        return
+    end
+end
+
+local function spawnAllNoCallback(modules: LoadedModules, methodName: string?)
+    runAllNoCallback(task.spawn, modules, methodName)
+end
+
+local function spawnAllCallback(modules: LoadedModules, methodName: string?, callback: () -> ())
+    runAllCallback(task.spawn, modules, methodName, callback)
+end
+
+local function deferAllNoCallback(modules: LoadedModules, methodName: string?)
+    runAllNoCallback(task.defer, modules, methodName)
+end
+
+local function deferAllCallback(modules: LoadedModules, methodName: string?, callback: () -> ())
+    runAllCallback(task.defer, modules, methodName, callback)
 end
 
 local function findName(name: string): PredicateFn
@@ -208,6 +241,39 @@ local function spawnAll(modules: LoadedModules, methodName: string?, callback: (
     spawnAllNoCallback(modules, methodName)
 end
 
+local function deferAll(modules: LoadedModules, methodName: string?, callback: (() -> ())?)
+    if callback then
+        return deferAllCallback(modules, methodName, callback)
+    end
+    deferAllNoCallback(modules, methodName)
+end
+
+local function phasesRunner(loader: Spawn, modules: LoadedModules, phases: { string }, onComplete: (() -> ())?)
+    local function runPhase(i: number)
+        if i > #phases then
+            if onComplete then
+                onComplete()
+            end
+            return
+        end
+        runAllCallback(loader, modules, phases[i], function()
+            runPhase(i + 1)
+            if verbose then
+                print(`Phase {phases[i]} Completed`)
+            end
+        end)
+    end
+    runPhase(1)
+end
+
+local function spawnPhases(modules: LoadedModules, phases: { string }, onComplete: (() -> ())?)
+    phasesRunner(task.spawn, modules, phases, onComplete)
+end
+
+local function deferPhases(modules: LoadedModules, phases: { string }, onComplete: (() -> ())?)
+    phasesRunner(task.defer, modules, phases, onComplete)
+end
+
 local function setDebugInfo(state: boolean)
     verbose = state
 end
@@ -221,5 +287,8 @@ return table.freeze({
     LoadDescendants = loadDescendants,
     LoadChildren = loadChildren,
     LoadModule = loadModule,
-    SpawnAll = spawnAll,
+    SpawnAllAsync = spawnAll,
+    DeferAllAsync = deferAll,
+    SpawnPhasesAsync = spawnPhases,
+    DeferPhasesAsync = deferPhases,
 })
