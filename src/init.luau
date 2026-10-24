@@ -162,8 +162,13 @@ local function runAllNoCallback(loader: Spawn, modules: LoadedModules, methodNam
 end
 
 local function runAllCallback(loader: Spawn, modules: LoadedModules, methodName: string?, callback: () -> ())
-    local remaining = 0
-    local callbackRan = false
+    local remaining = 1
+    local function finishOne()
+        remaining -= 1
+        if remaining == 0 then
+            callback()
+        end
+    end
     for name, mod in modules do
         local method = nil
         if type(mod) == "function" and not methodName then
@@ -180,18 +185,10 @@ local function runAllCallback(loader: Spawn, modules: LoadedModules, methodName:
         remaining += 1
         loader(function()
             spawn(name, method :: ModuleFunction, methodName, mod)
-            remaining -= 1
-            if remaining == 0 and not callbackRan then
-                callbackRan = true
-                callback()
-            end
+            finishOne()
         end)
     end
-    if remaining == 0 and not callbackRan then
-        callbackRan = true
-        callback()
-        return
-    end
+    finishOne()
 end
 
 local function spawnAllNoCallback(modules: LoadedModules, methodName: string?)
