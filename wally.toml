@@ -6,7 +6,7 @@ registry = "https://github.com/UpliftGames/wally-index"
 repository = "https://github.com/gigahd/onboot/"
 realm = "shared"
 license = "MIT"
-authors = "GigaHD"
+authors = ["GigaHD"]
 
 exclude = ["*"]
 include = ["src", "src/init.luau", "default.project.json", "LICENSE", "README.md", "wally.toml"]
