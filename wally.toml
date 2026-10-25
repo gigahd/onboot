@@ -1,10 +1,12 @@
 [package]
 name = "gigahd/onboot"
 description = "A simple Module to load your modules and services"
-version = "0.6.3"
+version = "0.7.0"
 registry = "https://github.com/UpliftGames/wally-index"
+repository = "https://github.com/gigahd/onboot/"
 realm = "shared"
 license = "MIT"
+authors = "GigaHD"
 
 exclude = ["*"]
 include = ["src", "src/init.luau", "default.project.json", "LICENSE", "README.md", "wally.toml"]
