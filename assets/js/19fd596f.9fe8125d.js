@@ -1,0 +1,1 @@
+"use strict";(self.webpackChunkdocs=self.webpackChunkdocs||[]).push([[73],{4410:s=>{s.exports=JSON.parse('{"sourceUrl":"https://github.com/gigahd/onboot/blob/master","baseUrl":"/onboot/","classOrder":[],"apiCategories":[]}')}}]);
