@@ -32,6 +32,8 @@ function DataService:Start() end
 return DataService
 ```
 
+### [Documentation](https://gigahd.github.io/onboot/)
+
 ## Loading
 
 Every loader returns a `LoadedModules` table that maps each module's full name (`Instance:GetFullName()`) to whatever it returned. A module that fails to `require` logs a warning with a traceback and is left out.
